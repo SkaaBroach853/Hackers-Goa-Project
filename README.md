@@ -1,618 +1,360 @@
 # The Acers — Face Blockchain Verify
 
-The Acers is a local visual-discovery and tamper-evidence proof of concept for consented images. Upload an authorized photo, optionally select one person when multiple people are detected, perform a live Google Lens visual search through SerpApi, optionally compare candidate faces using face embeddings, and anchor the evidence record to a blockchain.
+> Tamper-evident evidence handling for **consented** images: visual search, advisory face similarity, AI manipulation forensics, and blockchain anchoring in one local dashboard.
 
-> **Important:** This project is a proof of concept for consented images and publicly indexed results. It does not prove identity, search private accounts, or guarantee that a matching image exists online.
+![Python](https://img.shields.io/badge/Python-3.11+-blue)
+![Node](https://img.shields.io/badge/Node.js-18+-green)
+![Solidity](https://img.shields.io/badge/Solidity-Hardhat-lightgrey)
+![Status](https://img.shields.io/badge/Status-Hackathon%20PoC-orange)
+
+> **Important:** The Acers is a proof of concept for consented images and publicly indexed results. It does **not** prove identity, search private accounts, or guarantee that a matching image exists online.
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Features](#features)
+3. [Architecture and Flow](#architecture-and-flow)
+4. [Tech Stack](#tech-stack)
+5. [Project Structure](#project-structure)
+6. [Quick Start](#quick-start)
+7. [Configuration](#configuration)
+8. [Blockchain Setup](#blockchain-setup)
+9. [Usage](#usage)
+10. [AI Forensics and Explainability](#ai-forensics-and-explainability)
+11. [Evidence Record and Verification](#evidence-record-and-verification)
+12. [Command-Line Pipeline](#command-line-pipeline)
+13. [Testing](#testing)
+14. [Demo Flow](#demo-flow)
+15. [Troubleshooting](#troubleshooting)
+16. [Limitations](#limitations)
+17. [Privacy and Ethics](#privacy-and-ethics)
+18. [Credits and License](#credits-and-license)
+
+---
+
+## Overview
+
+You upload an authorized photo. The Acers detects faces, lets you pick one person if several are found, runs a live Google Lens search (through SerpApi) on a face-focused crop, optionally compares candidate faces with embeddings, and analyses the image with a pretrained manipulation classifier plus an explainability heatmap.
+
+Everything is bundled into a canonical evidence record, hashed with SHA-256, and anchored on a blockchain. Recomputing the hash later returns **MATCH** if the record is intact or **TAMPERED** if anything changed.
 
 ## Features
 
-* Premium local browser dashboard
-* Full uploaded-image preview
-* Manual person selection when multiple faces are detected
-* Face-focused crop for visual search
-* Live Google Lens search through SerpApi
-* Results grouped into:
+- Local browser dashboard with full-image preview
+- Manual person selection when multiple faces are detected
+- Face-focused crop used as the search query
+- Live Google Lens search via SerpApi, grouped into **Most Similar**, **Relevant** and **Similar**
+- Advisory face-embedding comparison (`face_recognition` / dlib)
+- Face authenticity check and full-image manipulation classification (Vision Transformer)
+- Integrated Gradients heatmap and overlay
+- SHA-256 evidence hashing, including forensic scores and visualization hashes
+- Local Hardhat and Polygon Amoy testnet support
+- On-chain verification with `MATCH` / `TAMPERED` result and a one-click tamper demo
+- Saved JSON evidence reports
+- Offline pytest suite
 
-  * **Most Similar**
-  * **Relevant**
-  * **Similar**
-* Advisory face-embedding comparison
-* SHA-256 evidence hashing
-* Local Hardhat blockchain support
-* Polygon Amoy testnet support
-* On-chain evidence verification
-* `MATCH` verification
-* `TAMPERED` demonstration
-* Saved JSON evidence reports
-* Offline pytest test suite
+## Architecture and Flow
 
-## Core Pipeline
+### System architecture
 
-```text
-Consent-based input image
-        ↓
-Face detection
-        ↓
-Select person (if multiple faces)
-        ↓
-Face-focused crop
-        ↓
-Crop SHA-256
-        ↓
-SerpApi / Google Lens
-        ↓
-Most Similar / Relevant / Similar
-        ↓
-Optional face-embedding comparison
-        ↓
-Canonical evidence record
-        ↓
-SHA-256 evidence digest
-        ↓
-Blockchain storage
-        ↓
-Recompute digest
-        ↓
-MATCH / TAMPERED
+```mermaid
+flowchart TB
+    subgraph Local["Local machine"]
+        UI["Browser dashboard<br/>(static/)"]
+        API["FastAPI app<br/>(app.py)"]
+        FACE["Face pipeline<br/>detect, embed"]
+        EVID["Evidence<br/>hash, report"]
+        FOR["Forensics<br/>ViT + Integrated Gradients"]
+        BC["Blockchain client"]
+        OUT[("Run reports<br/>output/")]
+        UI --> API
+        API --> FACE
+        API --> EVID
+        API --> FOR
+        EVID --> BC
+        BC --> OUT
+    end
+    SERP["SerpApi<br/>Google Lens"]
+    HF["Hugging Face<br/>ViT model"]
+    CHAIN["Blockchain<br/>Hardhat / Polygon Amoy"]
+    API --> SERP
+    FOR --> HF
+    BC --> CHAIN
 ```
 
-## Requirements
+### 1. Input stage
 
-* Python 3.11+
-* Node.js 18+
-* npm
-* A SerpApi account and API key
-* Internet connection for live Google Lens search
-
-The project uses `face_recognition` and `dlib`; Python 3.11 is recommended.
-
-## Installation
-
-Open PowerShell in the project folder:
-
-```powershell
-cd D:\AD\MLBC
-
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-
-pip install -r requirements.txt
-
-npm install
-
-Copy-Item .env.example .env
-
-npx hardhat compile
+```mermaid
+flowchart TD
+    A["Upload image<br/>JPG/PNG/WEBP, max 500 KB"] --> B["Detect faces<br/>dlib"]
+    B --> C{"Multiple faces?"}
+    C -- Yes --> D["Select person<br/>manual choice in UI"]
+    C -- No --> E["Face-focused crop<br/>crop SHA-256 recorded"]
+    D --> E
 ```
 
-## SerpApi Setup
+### 2. Analysis and evidence
 
-Create a SerpApi account:
-
-[https://serpapi.com/users/sign_up](https://serpapi.com/users/sign_up)
-
-Copy your API key and configure:
-
-```env
-SERPAPI_KEY=YOUR_SERPAPI_KEY
+```mermaid
+flowchart TD
+    CROP["Face crop + SHA-256"] --> F["Forensics<br/>face + full image + IG"]
+    CROP --> S["Visual search<br/>SerpApi, 3 result groups"]
+    S --> EM["Embedding compare<br/>optional, advisory"]
+    F --> EV["Canonical evidence JSON<br/>all results + artifact hashes"]
+    EM --> EV
+    EV --> H["SHA-256 digest"]
 ```
 
-The dashboard **Settings** panel can also save the configuration to the local `.env` file.
+### 3. Blockchain verification
 
-The application uses a genuine SerpApi request and does not fabricate results when no visual match is returned.
-
-## Image Upload Limit
-
-The browser dashboard currently supports:
-
-* JPG / JPEG
-* PNG
-* WEBP
-
-Maximum upload size:
-
-```text
-500 KB
+```mermaid
+flowchart TD
+    H["SHA-256 digest"] --> AN["Anchor digest<br/>FaceVerification.sol"]
+    AN --> RD["Read stored digest<br/>from contract"]
+    RD --> RC["Recompute SHA-256<br/>from saved evidence"]
+    T["Tamper check<br/>edits one field"] -.-> RC
+    RD --> Q{"Digests equal?"}
+    RC --> Q
+    Q -- Yes --> M["MATCH"]
+    Q -- No --> X["TAMPERED"]
+    style M fill:#EAF3DE,stroke:#3B6D11,color:#173404
+    style X fill:#FCEBEB,stroke:#A32D2D,color:#501313
 ```
 
-Images larger than 500 KB must be compressed or resized before upload.
-
-## Start the Dashboard
-
-```powershell
-cd D:\AD\MLBC
-.venv\Scripts\Activate.ps1
-
-uvicorn app:app --reload --port 8000
-```
-
-Open:
-
-[http://127.0.0.1:8000](http://127.0.0.1:8000)
-
-## Dashboard Settings
-
-Configure the required values in **Settings**.
-
-### Local Hardhat
-
-```text
-SERPAPI_KEY
-YOUR_SERPAPI_KEY
-
-NETWORK
-local
-
-WEB3_RPC_URL
-http://127.0.0.1:8545
-
-PRIVATE_KEY
-Temporary Hardhat private key
-
-CONTRACT_ADDRESS
-Deployed contract address
-
-MAX_WEB_RESULTS
-10
-```
-
-### Polygon Amoy
-
-```text
-SERPAPI_KEY
-YOUR_SERPAPI_KEY
-
-NETWORK
-amoy
-
-WEB3_RPC_URL
-YOUR_POLYGON_AMOY_RPC_URL
-
-PRIVATE_KEY
-TEST_WALLET_PRIVATE_KEY
-
-CONTRACT_ADDRESS
-DEPLOYED_AMOY_CONTRACT_ADDRESS
-
-MAX_WEB_RESULTS
-10
-```
-
-Secrets are stored locally in `.env` and masked in the dashboard.
-
-> Never commit `.env` or expose a real wallet private key.
-
-## Local Hardhat Blockchain
-
-Start the local blockchain:
-
-```powershell
-cd D:\AD\MLBC
-npx hardhat node
-```
-
-Keep this terminal open.
-
-Deploy the contract from a second terminal:
-
-```powershell
-cd D:\AD\MLBC
-npx hardhat run scripts/deploy.js --network localhost
-```
-
-Copy the contract address printed by the deployment script into your settings.
-
-A fresh Hardhat node commonly uses:
-
-```text
-0x5FbDB2315678afecb367f032d93F642f64180aa3
-```
-
-Always use the address actually printed by your deployment script.
-
-> Restarting `npx hardhat node` resets the local blockchain state. Deploy the contract again after restarting.
-
-## Polygon Amoy
-
-For a public blockchain demonstration:
-
-1. Use a dedicated test wallet.
-2. Obtain test MATIC from a current Polygon Amoy faucet.
-3. Configure an Amoy RPC endpoint.
-4. Deploy the contract.
-5. Copy the deployed contract address into `.env`.
-
-Deploy:
-
-```powershell
-npm run deploy:amoy
-```
-
-Then run the pipeline using the configured Amoy network.
-
-> Use testnet credentials only. Never use a production wallet private key.
-
-## Run a Search
-
-1. Open `http://127.0.0.1:8000`
-2. Open **Settings** and verify the configuration.
-3. Upload a consented image.
-4. Make sure it is **500 KB or smaller**.
-5. If multiple people are detected, select the intended person.
-6. Click **Find top matches**.
-7. Review:
-
-   * **Most Similar**
-   * **Relevant**
-   * **Similar**
-8. Scroll to the blockchain verification section.
-9. Verify the evidence status.
-
-## Face Embedding Comparison
-
-When a usable candidate face is available, the application can calculate an advisory face-embedding distance using `face_recognition` / dlib.
-
-A distance around `0.6` is commonly used as a starting reference, but it is not a universal identity threshold.
-
-Face similarity is probabilistic and can produce false positives and false negatives. The application therefore treats this result as **advisory**, not as proof of identity.
-
-## Evidence Record
-
-Each completed search creates a canonical evidence record containing information such as:
-
-```text
-Face/image crop hash
-Matched URL
-Source domain
-Search snippet
-Similarity value, when available
-Timestamp
-```
-
-The evidence record is converted into a canonical representation and hashed with SHA-256.
-
-```text
-Evidence Record
-      ↓
-Canonical Representation
-      ↓
-SHA-256
-      ↓
-Evidence Digest
-```
-
-## Blockchain Verification
-
-When blockchain settings are configured, the application:
-
-1. Creates the evidence record.
-2. Calculates its SHA-256 digest.
-3. Stores the digest in `FaceVerification.sol`.
-4. Records the blockchain transaction.
-5. Reads the stored value back.
-6. Recomputes the local digest.
-7. Compares both values.
-
-A matching digest produces:
-
-```text
-MATCH
-```
-
-The dashboard can display:
-
-```text
-Verification Status
-Contract Address
-Transaction Hash
-Block Number
-Evidence SHA-256
-Network
-```
-
-## Tamper Demonstration
-
-Click:
-
-**Run tamper check**
-
-The application modifies an evidence field in memory and recomputes the SHA-256 digest.
-
-Because the modified record produces a different hash, the verification result becomes:
-
-```text
-TAMPERED
-```
-
-The original blockchain record is not modified.
-
-This demonstrates that changes to the anchored evidence can be detected.
-
-## Terminal Pipeline
-
-Run the pipeline directly:
-
-```powershell
-python pipeline/main.py --image "C:\path\to\your-consented-photo.jpg"
-```
-
-If the configured implementation requires an image URL:
-
-```powershell
-python pipeline/main.py `
-  --image "C:\path\to\your-consented-photo.jpg" `
-  --image-url "https://example.com/image.jpg"
-```
-
-Reports are saved under:
-
-```text
-output/<timestamp>/report_<timestamp>.json
-```
-
-## Verify a Report
-
-```powershell
-python pipeline/verify.py `
-  --report "output\<timestamp>\report_<timestamp>.json"
-```
-
-## Simulate Tampering
-
-```powershell
-python pipeline/verify.py `
-  --report "output\<timestamp>\report_<timestamp>.json" `
-  --simulate-tamper
-```
-
-Expected result:
-
-```text
-TAMPERED
-```
-
-## Tests
-
-Run the offline test suite:
-
-```powershell
-pytest -q
-```
-
-## What This Proves
-
-The blockchain record provides tamper evidence for the anchored evidence record.
-
-If any hashed evidence field changes, the resulting SHA-256 digest changes.
-
-```text
-Original Evidence
-      ↓
-SHA-256 A
-      ↓
-Blockchain
-
-Modified Evidence
-      ↓
-SHA-256 B
-
-SHA-256 A ≠ SHA-256 B
-      ↓
-TAMPERED
-```
-
-## What This Does Not Prove
-
-This project does not:
-
-* Prove a person's legal or real-world identity
-* Guarantee that a visual match belongs to a particular person
-* Guarantee that a matching result exists online
-* Search private or restricted social-media accounts
-* Search unindexed content
-* Guarantee that Google Lens results are correct
-* Guarantee that face embedding results are correct
-* Eliminate false positives or false negatives
-* Establish legal ownership of an image
-
-The blockchain verifies the integrity of the stored evidence record; it does not independently prove that the evidence itself is true.
-
-## Privacy and Ethics
-
-Only use images you own or have explicit permission to search.
-
-Do not use this project to:
-
-* Track people without consent
-* Profile individuals
-* Identify strangers without authorization
-* Search private accounts
-* Bypass access controls
-* Process personal images without appropriate permission
-
-Reverse-image search and facial similarity can produce incorrect results. Human review and appropriate authorization are required.
+## Tech Stack
+
+| Layer | Tools |
+|---|---|
+| Backend | Python 3.11, FastAPI, Uvicorn |
+| Face detection / embeddings | `face_recognition`, dlib |
+| Visual search | SerpApi (Google Lens) |
+| AI forensics | Hugging Face Transformers, PyTorch, `prithivMLmods/Deep-Fake-Detector-v2-Model` |
+| Explainability | Integrated Gradients |
+| Blockchain | Solidity, Hardhat, Polygon Amoy |
+| Frontend | Static dashboard served by the app (`static/`) |
+| Tests | pytest |
 
 ## Project Structure
 
 ```text
-The-Acers/
-│
-├── app.py
-├── requirements.txt
-├── package.json
+Hackers-Goa-Project/
+├── app.py                 # FastAPI app and dashboard API
+├── contracts/             # FaceVerification.sol
+├── scripts/               # Deployment scripts (deploy.js)
+├── pipeline/              # CLI pipeline: main.py, verify.py
+├── static/                # Dashboard frontend
+├── sample_images/         # Sample inputs for demos
+├── tests/                 # Offline pytest suite
+├── demo.sh                # Demo helper script
 ├── hardhat.config.js
-├── .env.example
-├── README.md
-│
-├── contracts/
-│   └── FaceVerification.sol
-│
-├── scripts/
-│   └── deploy.js
-│
-├── pipeline/
-│   ├── main.py
-│   └── verify.py
-│
-├── output/
-│
-└── tests/
+├── package.json
+├── requirements.txt       # Base Python dependencies
+├── requirements-ml.txt    # Optional ML stack (forensics + XAI)
+└── .env.example           # Environment template
 ```
 
-## Hackathon Demo Flow
+> Runtime reports are written to `output/<timestamp>/`.
 
-```text
-1. Start Hardhat node
-2. Deploy FaceVerification.sol
-3. Start the dashboard
-4. Open Settings
-5. Show masked configuration
-6. Upload a consented image
-7. Select a face if multiple people are detected
-8. Run visual search
-9. Show Most Similar / Relevant / Similar results
-10. Show Evidence SHA-256
-11. Show blockchain transaction
-12. Show MATCH
-13. Click Run tamper check
-14. Show TAMPERED
+## Quick Start
+
+**Requirements:** Python 3.11+, Node.js 18+, npm, a [SerpApi](https://serpapi.com/users/sign_up) key, and an internet connection for live search. `dlib` may need build tools on some systems.
+
+```bash
+git clone https://github.com/sandesh362/Hackers-Goa-Project.git
+cd Hackers-Goa-Project
+
+# Python environment
+python -m venv .venv
+source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
+
+pip install -r requirements.txt
+pip install -r requirements-ml.txt # optional: forensics + explainability
+
+# Node / Hardhat
+npm install
+npx hardhat compile
+
+# Config
+cp .env.example .env               # Windows PowerShell: Copy-Item .env.example .env
 ```
 
-For Polygon Amoy transactions:
+Start the dashboard:
 
-```text
-https://amoy.polygonscan.com/tx/<TX_HASH>
-```
-
-## Troubleshooting
-
-### Dashboard does not start
-
-Activate the virtual environment:
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-Then:
-
-```powershell
+```bash
 uvicorn app:app --reload --port 8000
 ```
 
-### Hardhat connection fails
+Open <http://127.0.0.1:8000>.
 
-Make sure the node is running:
+## Configuration
 
-```powershell
+Set values in the dashboard **Settings** panel (saved to local `.env`, secrets masked) or edit `.env` directly.
+
+| Variable | Local Hardhat | Polygon Amoy |
+|---|---|---|
+| `SERPAPI_KEY` | your key | your key |
+| `NETWORK` | `local` | `amoy` |
+| `WEB3_RPC_URL` | `http://127.0.0.1:8545` | your Amoy RPC URL |
+| `PRIVATE_KEY` | temporary Hardhat key | dedicated **test** wallet key |
+| `CONTRACT_ADDRESS` | printed by deploy script | printed by deploy script |
+| `MAX_WEB_RESULTS` | `10` | `10` |
+
+> **Never commit `.env` or use a real wallet key.** Testnet credentials only.
+
+## Blockchain Setup
+
+### Local Hardhat
+
+```bash
+# Terminal 1 — keep running
 npx hardhat node
-```
 
-and verify:
-
-```env
-WEB3_RPC_URL=http://127.0.0.1:8545
-```
-
-### Contract not found
-
-Deploy again after restarting Hardhat:
-
-```powershell
+# Terminal 2
 npx hardhat run scripts/deploy.js --network localhost
 ```
 
-Update the contract address in your configuration.
+Copy the address printed by the deploy script into your settings. Restarting `npx hardhat node` resets the chain, so redeploy and update the address.
 
-### Image upload rejected
+### Polygon Amoy
 
-Check that the image is:
+1. Create a dedicated test wallet.
+2. Get test MATIC from a current Amoy faucet.
+3. Set an Amoy RPC endpoint in `.env`.
+4. Deploy:
 
-```text
-JPG / JPEG / PNG / WEBP
-≤ 500 KB
+   ```bash
+   npm run deploy:amoy
+   ```
+
+5. Put the deployed address in `CONTRACT_ADDRESS` and set `NETWORK=amoy`.
+
+Transactions can be viewed at `https://amoy.polygonscan.com/tx/<TX_HASH>`.
+
+## Usage
+
+1. Open the dashboard and check **Settings**.
+2. Upload a consented image (JPG, JPEG, PNG or WEBP, **max 500 KB**).
+3. If several faces are detected, select the intended person.
+4. Click **Find top matches**.
+5. Review **Most Similar**, **Relevant** and **Similar** results.
+6. Review the authenticity, forensics and heatmap panels.
+7. Scroll to blockchain verification and check the status.
+8. Click **Run tamper check** to demonstrate `TAMPERED`.
+
+## AI Forensics and Explainability
+
+**Model:** `prithivMLmods/Deep-Fake-Detector-v2-Model`, a fine-tuned ViT-base (patch 16) classifier with Realism / Deepfake classes, loaded through Transformers and PyTorch. A specific Hugging Face commit is pinned for repeatable loading. The model downloads on first inference and uses CUDA when available, otherwise CPU.
+
+**Two assessments:**
+
+- **Face authenticity** on the dlib face crop (crops under 64 px per side are skipped), plus a deterministic 0–100 quality heuristic.
+- **Image forensics** on the full RGB upload, returning `classification`, `manipulation_score`, `authenticity_score`, model metadata and thresholds.
+
+**Display bands:** ≤ 0.35 likely authentic, ≥ 0.65 potentially manipulated, otherwise inconclusive.
+
+**Explainability:** Integrated Gradients (16 steps, zero baseline) on the manipulated-class score. Positive attribution is saved as a heatmap and blended overlay, served through a run-scoped API route. Their SHA-256 hashes go into the evidence; image data is never stored on-chain.
+
+If the ML stack, model download or explanation step fails, the search and blockchain pipeline still runs and records the analysis as unavailable.
+
+> This is a demonstration classifier, not forensic-grade or independently validated. Scores are not calibrated probabilities, and heatmaps show regions that influenced the model, not confirmed altered pixels.
+
+## Evidence Record and Verification
+
+The canonical evidence record includes the crop hash, matched URL, source domain, snippet, similarity value (when available), timestamp, face and full-image forensic results, thresholds, model metadata, and explanation artifact hashes. Changing any hashed field changes the digest.
+
+```json
+{
+  "image_forensics": {
+    "classification": "inconclusive",
+    "manipulation_score": 0.51,
+    "authenticity_score": 0.49,
+    "explainability": {
+      "method": "Integrated Gradients",
+      "heatmap_available": true,
+      "overlay_available": true
+    }
+  },
+  "evidence_hash": "SHA-256 of canonical evidence"
+}
 ```
 
-### No Google Lens result
+Verification steps: build record → compute SHA-256 → store in `FaceVerification.sol` → record transaction → read back → recompute → compare. The dashboard shows status, contract address, transaction hash, block number, evidence SHA-256 and network.
 
-A public visual match may not exist or may not be returned. The application does not fabricate results.
+The API response at `/api/runs/{id}` includes `report.image_forensics`.
 
-### Polygon Amoy transaction fails
+## Command-Line Pipeline
 
-Check:
+```bash
+python pipeline/main.py --image "path/to/consented-photo.jpg"
 
-* RPC URL
-* Wallet/test private key
-* Test MATIC balance
-* Contract address
-* Network configuration
-
-## Git Commands
-
-After updating the README:
-
-```powershell
-git add README.md
-git commit -m "Improve project README"
-git push
+# if your configuration needs an image URL
+python pipeline/main.py --image "path/to/consented-photo.jpg" --image-url "https://example.com/image.jpg"
 ```
 
-## Ethical Use Statement
+Reports are saved to `output/<timestamp>/report_<timestamp>.json`.
 
-> **The Acers is intended for authorized, consented, and responsible use only.**
->
-> The system combines visual search, advisory face similarity, cryptographic hashing, and blockchain anchoring to demonstrate tamper-evident evidence handling. It is not a production identity-verification system.
+```bash
+# Verify a report
+python pipeline/verify.py --report "output/<timestamp>/report_<timestamp>.json"
+
+# Simulate tampering (expected: TAMPERED)
+python pipeline/verify.py --report "output/<timestamp>/report_<timestamp>.json" --simulate-tamper
+```
+
+## Testing
+
+```bash
+pytest -q
+```
+
+The suite runs offline and does not call SerpApi or a live chain.
+
+## Demo Flow
+
+1. Start the Hardhat node
+2. Deploy `FaceVerification.sol`
+3. Start the dashboard
+4. Show the masked Settings
+5. Upload a consented image and select a face if needed
+6. Run the visual search and show the three result groups
+7. Show authenticity, forensics and the Integrated Gradients heatmap
+8. Show the Evidence SHA-256 and blockchain transaction
+9. Show **MATCH**
+10. Click **Run tamper check** and show **TAMPERED**
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| Dashboard won't start | Activate the virtualenv, then `uvicorn app:app --reload --port 8000` |
+| Hardhat connection fails | Make sure `npx hardhat node` is running and `WEB3_RPC_URL=http://127.0.0.1:8545` |
+| Contract not found | Redeploy after restarting Hardhat and update `CONTRACT_ADDRESS` |
+| Upload rejected | Use JPG/JPEG/PNG/WEBP at 500 KB or smaller |
+| No Google Lens result | A public match may not exist; the app never fabricates results |
+| Forensics unavailable | Install `requirements-ml.txt` and check Hugging Face access |
+| Amoy transaction fails | Check RPC URL, test key, test MATIC balance, contract address and network |
 
 ## Limitations
 
-The Acers is a proof-of-concept system and has several technical and practical limitations.
+- **Images:** low-resolution, compressed, blurred, dark or occluded faces reduce detection and matching quality.
+- **Search:** results depend on what Google Lens and SerpApi return at that moment. No results does not mean no image exists.
+- **Face comparison:** advisory only. The commonly cited `0.6` distance is a starting reference, not a universal threshold. False positives and negatives occur.
+- **Forensics:** the classifier is not validated for forensic use and can fail on compression, edits or unfamiliar generators.
+- **Blockchain:** anchoring proves the record was not altered, not that its contents are true. `MATCH` does not mean a person was identified.
+- **Operations:** local Hardhat state is temporary, Amoy can be unreliable, and third-party APIs may change.
 
-### Image Limitations
+## Privacy and Ethics
 
-- The dashboard accepts JPG, JPEG, PNG, and WEBP images only.
-- The current maximum upload size is **500 KB**.
-- Low-resolution, heavily compressed, blurred, poorly lit, or partially obstructed faces may reduce detection and matching quality.
-- Multiple faces may require manual person selection.
-- The system cannot guarantee successful face detection in every image.
+Use only images you own or have explicit permission to process. Do not use this project to track people, profile individuals, identify strangers, search private accounts, or bypass access controls. Public availability does not make personal content fair game for identification. Human review and proper authorization are required.
 
-### Visual Search Limitations
+> **The Acers is intended for authorized, consented and responsible use only. It is not a production identity-verification system.**
 
-- Google Lens / SerpApi results depend on what is publicly indexed and available at the time of the search.
-- Private, restricted, deleted, or unindexed pages may not be discovered.
-- Search engines may return visually similar but unrelated images.
-- Results can change over time.
-- A lack of search results does not mean that no related image exists online.
-- The system does not fabricate results when the visual search returns no usable match.
+## Credits and License
 
-### Face Comparison Limitations
+- Forked from [SkaaBroach853/Hackers-Goa-Project](https://github.com/SkaaBroach853/Hackers-Goa-Project)
+- Model: [`prithivMLmods/Deep-Fake-Detector-v2-Model`](https://huggingface.co/prithivMLmods/Deep-Fake-Detector-v2-Model)
+- Visual search: [SerpApi](https://serpapi.com/)
 
-- Face embedding comparison is **advisory**, not an identity decision.
-- Accuracy can be affected by lighting, pose, occlusion, image quality, facial expression, age, and camera conditions.
-- Similarity thresholds are not universal and may require calibration for different datasets.
-- Both false positives and false negatives are possible.
-
-### Blockchain Limitations
-
-- Blockchain anchoring proves the integrity of the stored evidence record, not the truth or authenticity of the evidence itself.
-- A `MATCH` means the recomputed evidence hash matches the anchored blockchain hash; it does not mean that a person has been positively identified.
-- Local Hardhat state is temporary and is reset when the Hardhat node is restarted.
-- Polygon Amoy is a test network and may experience RPC, faucet, or network availability issues.
-- Blockchain verification depends on correct RPC, wallet, network, and contract configuration.
-
-### Privacy and Legal Limitations
-
-- The project should only be used with images that the user owns or is authorized to process.
-- Public availability does not automatically mean that personal content can be used for identification or profiling.
-- The system does not bypass authentication, access controls, or private-account restrictions.
-- Users are responsible for complying with applicable privacy, data-protection, and platform requirements.
-
-### Operational Limitations
-
-- Live Google Lens searches require an internet connection and a working SerpApi configuration.
-- Third-party search results and APIs may change their behavior, availability, or response format.
-- Candidate pages may not contain a usable face image for comparison.
-- The system is designed for demonstration and research purposes and is not a production-grade identity-verification platform.
-
-## License
-
-This project is a hackathon proof of concept. Review the repository license and the terms of any third-party services used before distributing or deploying the project beyond the intended demonstration environment.
+This is a hackathon proof of concept. No license file is currently in the repository, so add one (for example MIT) before distributing, and review the terms of SerpApi, Hugging Face and the model before any deployment beyond demos.
